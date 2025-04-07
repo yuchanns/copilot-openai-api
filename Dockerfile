@@ -1,5 +1,5 @@
 # Build stage for PDM dependencies
-FROM python:3.9-slim AS pdm
+FROM python:3.10-slim AS pdm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -24,7 +24,7 @@ COPY pyproject.toml pdm.lock ./
 RUN --mount=type=cache,target=/root/.cache/pdm pdm install --prod --no-editable
 
 # Final stage
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
@@ -34,7 +34,7 @@ COPY main.py main.py
 COPY run.py run.py
 
 # Set environment variables
-ENV PYTHONPATH="/app/.venv/lib/python3.9/site-packages" \
+ENV PYTHONPATH="/app/.venv/lib/python3.10/site-packages" \
     VIRTUAL_ENV="/app/.venv" \
     PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1

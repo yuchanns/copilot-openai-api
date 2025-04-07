@@ -1,11 +1,10 @@
 import uvicorn
-import multiprocessing
 import argparse
 import os
 
 def run_app(reload: bool = False):
     # Get the number of CPU cores
-    workers = None if reload else multiprocessing.cpu_count()
+    workers = 1
     
     # Get port from environment variable, default to 9191
     port = int(os.getenv("COPILOT_SERVER_PORT", "9191"))
