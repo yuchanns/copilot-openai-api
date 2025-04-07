@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = []
 lock_version = "4.5.0"
-content_hash = "sha256:6686836c1eac66dfbadbedc458698a4e73738576e5a77f4f75e7514480c7e72d"
+content_hash = "sha256:3d04018976a3ef0857dd5d6e7a0caf37b7278ebf09154ff493393023bc525249"
 
 [[metadata.targets]]
 requires_python = "==3.10.*"
@@ -94,6 +94,15 @@ dependencies = [
 files = [
     {file = "fastapi-0.115.12-py3-none-any.whl", hash = "sha256:e94613d6c05e27be7ffebdd6ea5f388112e5e430c8f7d6494a9d1d88d43e814d"},
     {file = "fastapi-0.115.12.tar.gz", hash = "sha256:1e2c2a2646905f9e83d32f04a3f86aff4a286669c6c950ca95b5fd68c2602681"},
+]
+
+[[package]]
+name = "fasteners"
+version = "0.19"
+summary = ""
+files = [
+    {file = "fasteners-0.19-py3-none-any.whl", hash = "sha256:758819cb5d94cdedf4e836988b74de396ceacb8e2794d21f82d131fd9ee77237"},
+    {file = "fasteners-0.19.tar.gz", hash = "sha256:b4f37c3ac52d8a445af3a66bce57b33b5e90b97c696b7b984f530cf8f0ded09c"},
 ]
 
 [[package]]

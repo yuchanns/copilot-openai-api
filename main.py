@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import platform
-import secrets
 import time
 
 from contextlib import asynccontextmanager
@@ -12,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import aiofiles
+import fasteners
 import httpx
 
 from fastapi import FastAPI, HTTPException, Request
@@ -40,6 +40,14 @@ class CopilotAuth:
 
         self.config_dir = Path(config_dir)
 
+        # Ensure github-copilot directory exists
+        copilot_dir = self.config_dir / "github-copilot"
+        copilot_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create lock file path
+        self.lock_file = copilot_dir / ".copilot.lock"
+        self.lock = fasteners.InterProcessLock(str(self.lock_file))
+
         # API endpoints
         self.auth_url = "https://api.github.com/copilot_internal/v2/token"
 
@@ -64,20 +72,48 @@ class CopilotAuth:
             ):  # Refresh 2 minutes before expiration
                 return False
 
-        # Send authentication request
-        headers = {
-            "Authorization": f"token {self.oauth_token}",
-            "Accept": "application/json",
-            "Editor-Plugin-Version": "copilot.lua",  # Simulate copilot.lua plugin
-        }
+        # Try to acquire the lock
+        if not self.lock.acquire(blocking=False):
+            # If we can't get the lock, wait for a short time and check if token was refreshed by another process
+            await asyncio.sleep(1)
+            try:
+                async with aiofiles.open(
+                    self.config_dir / "github-copilot" / "token.json", "r"
+                ) as f:
+                    self.github_token = json.loads(await f.read())
+                    if (
+                        self.github_token
+                        and self.github_token["expires_at"] > time.time() + 120
+                    ):
+                        return True
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(self.auth_url, headers=headers)
-            if response.status_code == 200:
-                self.github_token = response.json()
-                return True
+            # If still no valid token, wait for lock
+            self.lock.acquire()
 
-            raise Exception(f"Token refresh failed: {response.text}")
+        try:
+            # Send authentication request
+            headers = {
+                "Authorization": f"token {self.oauth_token}",
+                "Accept": "application/json",
+                "Editor-Plugin-Version": "copilot.lua",  # Simulate copilot.lua plugin
+            }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.get(self.auth_url, headers=headers)
+                if response.status_code == 200:
+                    self.github_token = response.json()
+                    # Save token to file for other processes
+                    async with aiofiles.open(
+                        self.config_dir / "github-copilot" / "token.json", "w"
+                    ) as f:
+                        await f.write(json.dumps(self.github_token))
+                    return True
+
+                raise Exception(f"Token refresh failed: {response.text}")
+        finally:
+            self.lock.release()
 
     async def setup(self):
         """Initialize"""
@@ -94,6 +130,8 @@ class CopilotAuth:
         """Cleanup resources"""
         if self.refresh_task:
             self.refresh_task.cancel()
+        if self.lock.acquired:
+            self.lock.release()
 
     async def setup_refresh_timer(self):
         """Setup token refresh timer"""
@@ -118,9 +156,11 @@ async def lifespan(app: FastAPI):
     app.state.auth = auth
 
     # Generate or get token from environment
-    app.state.access_token = os.environ.get("COPILOT_TOKEN") or secrets.token_urlsafe(
-        32
-    )
+    app.state.access_token = os.environ.get("COPILOT_TOKEN")
+    if not app.state.access_token:
+        raise Exception(
+            "COPILOT_TOKEN environment variable is not set. Please set it to a valid token."
+        )
     logging.info(f"Access token: {app.state.access_token}")
 
     yield
