@@ -1,19 +1,30 @@
 import asyncio
 import json
+import logging
 import os
 import platform
+import secrets
 import time
 
 from contextlib import asynccontextmanager
+from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import aiofiles
 import httpx
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 class CopilotAuth:
@@ -105,6 +116,13 @@ async def lifespan(app: FastAPI):
     auth = CopilotAuth()
     await auth.setup()
     app.state.auth = auth
+
+    # Generate or get token from environment
+    app.state.access_token = os.environ.get("COPILOT_TOKEN") or secrets.token_urlsafe(
+        32
+    )
+    logging.info(f"Access token: {app.state.access_token}")
+
     yield
     await auth.cleanup()
 
@@ -157,9 +175,26 @@ async def proxy_stream(request: Request, url: str):
         return {"error": str(e)}
 
 
+def require_auth(func):
+    @wraps(func)
+    async def wrapper(request: Request, *args, **kwargs):
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(
+                status_code=401, detail="Missing or invalid authorization header"
+            )
+
+        token = auth_header.split(" ")[1]
+        if token != request.app.state.access_token:
+            raise HTTPException(status_code=403, detail="Invalid access token")
+
+        return await func(request, *args, **kwargs)
+
+    return wrapper
+
+
 @app.api_route("/chat/completions", methods=["POST"])
+@require_auth
 async def proxy(request: Request):
     target_url = "https://api.githubcopilot.com/chat/completions"
-
     return await proxy_stream(request, target_url)
-
