@@ -1,0 +1,128 @@
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "third_party",
+]
+
+# Same as Black.
+line-length = 88
+indent-width = 4
+
+target-version = "py310"
+
+[format]
+# Use double quotes for strings.
+quote-style = "double"
+
+# Indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+[lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`) codes by default.
+select = ["E", "F", "B", "W", "I001"]
+ignore = ["E501", "W505"]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[lint.per-file-ignores]
+"__init__.py" = ["E402", "F401"]
+"test_*.py" = ["E501"]
+
+[lint.isort]
+combine-as-imports = true
+detect-same-package = true
+force-wrap-aliases = true
+known-first-party = ["app"]
+known-third-party = ["twisted", "watchdog"]
+lines-after-imports = 2
+lines-between-types = 1
+relative-imports-order = "closest-to-furthest"
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+required-imports = ["from __future__ import annotations"]
+extra-standard-library = ["typing"]
+
+[lint.flake8-bugbear]
+extend-immutable-calls = [
+    "chr",
+    "divmod",
+    "enumerate",
+    "frozenset",
+    "getattr",
+    "hasattr",
+    "hash",
+    "id",
+    "isinstance",
+    "issubclass",
+    "iter",
+    "len",
+    "max",
+    "min",
+    "next",
+    "oct",
+    "open",
+    "ord",
+    "pow",
+    "range",
+    "repr",
+    "reversed",
+    "round",
+    "slice",
+    "sorted",
+    "sum",
+    "super",
+    "type",
+    "vars",
+    "zip",
+]
+
+[lint.mccabe]
+# Unlike Flake8, default to a complexity level of 10.
+max-complexity = 10
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.pycodestyle]
+max-doc-length = 88
+
+[lint.pylint]
+max-args = 8
+max-branches = 12
+max-returns = 6
+max-statements = 50
+
+[lint.pyupgrade]
+# Preserve types, even if a file imports `from __future__ import annotations`.
+keep-runtime-typing = true
+
