@@ -99,43 +99,46 @@ class CopilotAuth:
         except FileNotFoundError:
             pass
 
-    def is_token_valid(self, buffer_time: int = 120) -> bool:
-        """Check if current token is valid with a buffer time"""
-        return bool(
-            self.github_token
-            and self.github_token["expires_at"] > time.time() + buffer_time
-        )
-
-    async def wait_for_token_refresh(self) -> bool:
-        """Wait for another process to refresh the token"""
-        await asyncio.sleep(5)
-        await self.load_token_from_file()
-        return self.is_token_valid()
-
     async def refresh_token(self, force: bool = False) -> bool:
         """Refresh Copilot token"""
-        # Skip refresh if token is still valid and not forced
-        if not force:
-            if self.is_token_valid():
-                return True
 
-            # Load newest token from file since other process might have updated it
-            await self.load_token_from_file()
-            if not force and self.is_token_valid():
-                return True
+        # Check if we already have a valid token in the memory
+        if (
+            not force
+            and self.github_token
+            and self.github_token["expires_at"] > time.time() + 120
+        ):
+            return True
 
-        # Try to acquire lock for refresh
+        # Load newest token from file since other process might have updated it
+        await self.load_token_from_file()
+
+        # check again
+        if (
+            not force
+            and self.github_token
+            and self.github_token["expires_at"] > time.time() + 120
+        ):
+            return True
+
+        # If we need to refresh, try to acquire lock
         lock_file = await self.acquire_lock()
         if not lock_file:
-            # Another process is refreshing, wait and check again
-            return await self.wait_for_token_refresh()
+            # Another process is refreshing, wait and load from file again
+            await asyncio.sleep(5)
+            await self.load_token_from_file()
+            # Return True if we got a valid token from file after waiting
+            return bool(
+                self.github_token
+                and self.github_token["expires_at"] > time.time() + 120
+            )
 
         try:
             # Send authentication request
             headers = {
                 "Authorization": f"token {self.oauth_token}",
                 "Accept": "application/json",
-                "Editor-Plugin-Version": "copilot.lua",
+                "Editor-Plugin-Version": "copilot.lua",  # Simulate copilot.lua plugin
             }
 
             async with httpx.AsyncClient() as client:
@@ -151,8 +154,19 @@ class CopilotAuth:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
             lock_file.close()
 
-    async def setup_file_watcher(self):
-        """Setup file watcher for token changes"""
+    async def setup(self):
+        """Initialize"""
+        # Get OAuth token
+        self.oauth_token = await self.get_oauth_token()
+
+        # Try to load existing token
+        await self.load_token_from_file()
+
+        # If no token exists or it's expired, force refresh
+        if not self.github_token or self.github_token["expires_at"] <= time.time():
+            await self.refresh_token(force=True)
+
+        # Setup file watcher
         self.file_handler = TokenFileHandler(self)
         self.observer = Observer()
         self.observer.schedule(
@@ -160,18 +174,7 @@ class CopilotAuth:
         )
         self.observer.start()
 
-    async def setup(self):
-        """Initialize authentication system"""
-        # Get OAuth token
-        self.oauth_token = await self.get_oauth_token()
-
-        # Initialize token state
-        await self.load_token_from_file()
-        if not self.is_token_valid():
-            await self.refresh_token(force=True)
-
-        # Setup watchers and timers
-        await self.setup_file_watcher()
+        # Start refresh timer
         self.refresh_task = asyncio.create_task(self.setup_refresh_timer())
 
     async def cleanup(self):
@@ -183,17 +186,19 @@ class CopilotAuth:
             self.observer.join()
 
     async def setup_refresh_timer(self):
-        """Periodically refresh token before expiration"""
+        """Setup token refresh timer"""
         while True:
             try:
                 await self.refresh_token()
-                # Calculate next refresh time
-                sleep_time = (
-                    60  # Default retry interval if no token
-                    if not self.github_token
-                    else max(0, self.github_token["expires_at"] - time.time() - 120)
-                )
-                await asyncio.sleep(sleep_time)
+                # Wait until next refresh time
+                if self.github_token:
+                    next_refresh = (
+                        self.github_token["expires_at"] - 120
+                    )  # Refresh 2 minutes before expiration
+                    sleep_time = max(0, next_refresh - time.time())
+                    await asyncio.sleep(sleep_time)
+                else:
+                    await asyncio.sleep(60)  # If no token, retry after 1 minute
             except Exception as e:
                 logging.error(f"Error in refresh timer: {e}")
                 await asyncio.sleep(60)  # On error, retry after 1 minute
