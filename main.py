@@ -1,5 +1,4 @@
 import asyncio
-import fcntl
 import json
 import logging
 import os
@@ -17,9 +16,6 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from watchdog.events import FileSystemEventHandler
-from watchdog.observers import Observer
-from watchdog.observers.api import BaseObserver
 
 
 # Configure logging
@@ -29,6 +25,12 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+from watchdog.observers.api import BaseObserver
+
+
+import fcntl
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 class TokenFileHandler(FileSystemEventHandler):
     def __init__(self, auth):
@@ -37,7 +39,6 @@ class TokenFileHandler(FileSystemEventHandler):
     def on_modified(self, event):
         if event.src_path == str(self.auth.token_file):
             asyncio.create_task(self.auth.load_token_from_file())
-
 
 class CopilotAuth:
     def __init__(self):
@@ -75,7 +76,7 @@ class CopilotAuth:
         """Acquire file lock for token refresh"""
         try:
             # Open the lock file in append mode (creates if not exists)
-            lock_file = open(str(self.token_file) + ".lock", "a")
+            lock_file = open(str(self.token_file) + '.lock', 'a')
             # Try to acquire an exclusive lock
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             return lock_file
@@ -85,13 +86,13 @@ class CopilotAuth:
 
     async def save_token_to_file(self):
         """Save token to file"""
-        async with aiofiles.open(self.token_file, "w") as f:
+        async with aiofiles.open(self.token_file, 'w') as f:
             await f.write(json.dumps(self.github_token))
 
     async def load_token_from_file(self):
         """Load token from file"""
         try:
-            async with aiofiles.open(self.token_file, "r") as f:
+            async with aiofiles.open(self.token_file, 'r') as f:
                 content = await f.read()
                 if content:
                     self.github_token = json.loads(content)
@@ -101,24 +102,16 @@ class CopilotAuth:
 
     async def refresh_token(self, force: bool = False) -> bool:
         """Refresh Copilot token"""
-
+        
         # Check if we already have a valid token in the memory
-        if (
-            not force
-            and self.github_token
-            and self.github_token["expires_at"] > time.time() + 120
-        ):
+        if not force and self.github_token and self.github_token["expires_at"] > time.time() + 120:
             return True
 
         # Load newest token from file since other process might have updated it
         await self.load_token_from_file()
 
         # check again
-        if (
-            not force
-            and self.github_token
-            and self.github_token["expires_at"] > time.time() + 120
-        ):
+        if not force and self.github_token and self.github_token["expires_at"] > time.time() + 120:
             return True
 
         # If we need to refresh, try to acquire lock
@@ -128,10 +121,7 @@ class CopilotAuth:
             await asyncio.sleep(5)
             await self.load_token_from_file()
             # Return True if we got a valid token from file after waiting
-            return bool(
-                self.github_token
-                and self.github_token["expires_at"] > time.time() + 120
-            )
+            return bool(self.github_token and self.github_token["expires_at"] > time.time() + 120)
 
         try:
             # Send authentication request
@@ -169,9 +159,7 @@ class CopilotAuth:
         # Setup file watcher
         self.file_handler = TokenFileHandler(self)
         self.observer = Observer()
-        self.observer.schedule(
-            self.file_handler, str(self.token_file.parent), recursive=False
-        )
+        self.observer.schedule(self.file_handler, str(self.token_file.parent), recursive=False)
         self.observer.start()
 
         # Start refresh timer
@@ -192,9 +180,7 @@ class CopilotAuth:
                 await self.refresh_token()
                 # Wait until next refresh time
                 if self.github_token:
-                    next_refresh = (
-                        self.github_token["expires_at"] - 120
-                    )  # Refresh 2 minutes before expiration
+                    next_refresh = self.github_token["expires_at"] - 120  # Refresh 2 minutes before expiration
                     sleep_time = max(0, next_refresh - time.time())
                     await asyncio.sleep(sleep_time)
                 else:
@@ -212,8 +198,8 @@ async def lifespan(app: FastAPI):
     app.state.auth = auth
 
     # Generate or get token from environment
-    app.state.access_token = os.environ.get("COPILOT_TOKEN")
-
+    app.state.access_token = os.environ.get("COPILOT_TOKEN") 
+    
     if not app.state.access_token:
         raise Exception("COPILOT_TOKEN environment variable not set")
 
