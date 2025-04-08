@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import aiofiles
-import fasteners
 import httpx
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from watchfiles import awatch
 
 
 # Configure logging
@@ -31,7 +31,7 @@ class CopilotAuth:
     def __init__(self):
         self.oauth_token: Optional[str] = None
         self.github_token: Optional[Dict[str, Any]] = None
-        self.refresh_task: Optional[asyncio.Task] = None
+        self.tasks: list[asyncio.Task] = []
 
         if platform.system() == "Windows":
             config_dir = os.path.expanduser("~/AppData/Local")
@@ -40,13 +40,8 @@ class CopilotAuth:
 
         self.config_dir = Path(config_dir)
 
-        # Ensure github-copilot directory exists
-        copilot_dir = self.config_dir / "github-copilot"
-        copilot_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create lock file path
-        self.lock_file = copilot_dir / ".copilot.lock"
-        self.lock = fasteners.InterProcessLock(str(self.lock_file))
+        self.token_file = self.config_dir / "github-copilot" / "token.json"
+        self.token_file.parent.mkdir(parents=True, exist_ok=True)
 
         # API endpoints
         self.auth_url = "https://api.github.com/copilot_internal/v2/token"
@@ -63,75 +58,120 @@ class CopilotAuth:
                             return data["oauth_token"]
         raise Exception("GitHub OAuth token not found")
 
+    async def acquire_lock(self):
+        """Acquire file lock for token refresh using file existence"""
+        lock_path = str(self.token_file) + ".lock"
+        try:
+            # Try to create lock file - if it exists, another process has the lock
+            Path(lock_path).touch(exist_ok=False)
+            return True
+        except FileExistsError:
+            return False
+
+    async def release_lock(self):
+        """Release the file lock"""
+        lock_path = str(self.token_file) + ".lock"
+        try:
+            Path(lock_path).unlink()
+        except FileNotFoundError:
+            pass
+
+    async def save_token_to_file(self):
+        """Save token to file"""
+        async with aiofiles.open(self.token_file, "w") as f:
+            await f.write(json.dumps(self.github_token))
+
+    async def load_token_from_file(self):
+        """Load token from file"""
+        try:
+            async with aiofiles.open(self.token_file, "r") as f:
+                content = await f.read()
+                if content:
+                    self.github_token = json.loads(content)
+                    logging.info("Token loaded from file")
+        except FileNotFoundError:
+            pass
+
+    def is_token_valid(self):
+        return bool(
+            self.github_token and self.github_token["expires_at"] > time.time() + 120
+        )
+
+    async def wait_for_token_refresh(self) -> bool:
+        """Wait for another process to refresh the token"""
+        await asyncio.sleep(5)
+        await self.load_token_from_file()
+        return self.is_token_valid()
+
     async def refresh_token(self, force: bool = False) -> bool:
         """Refresh Copilot token"""
-        # Check if refresh is needed
-        if not force and self.github_token:
-            if (
-                self.github_token["expires_at"] > time.time() + 120
-            ):  # Refresh 2 minutes before expiration
-                return False
+        # Skip refresh if token is still valid and not forced
+        if not force:
+            if self.is_token_valid():
+                return True
 
-        # Try to acquire the lock
-        if not self.lock.acquire(blocking=False):
-            # If we can't get the lock, wait for a short time and check if token was refreshed by another process
-            await asyncio.sleep(1)
-            try:
-                async with aiofiles.open(
-                    self.config_dir / "github-copilot" / "token.json", "r"
-                ) as f:
-                    self.github_token = json.loads(await f.read())
-                    if (
-                        self.github_token
-                        and self.github_token["expires_at"] > time.time() + 120
-                    ):
-                        return True
-            except (FileNotFoundError, json.JSONDecodeError):
-                pass
+            # Load newest token from file since other process might have updated it
+            await self.load_token_from_file()
+            if self.is_token_valid():
+                return True
 
-            # If still no valid token, wait for lock
-            self.lock.acquire()
+        # Try to acquire lock for refresh
+        lock_file = await self.acquire_lock()
+        if not lock_file:
+            # Another process is refreshing, wait and check again
+            return await self.wait_for_token_refresh()
 
         try:
             # Send authentication request
             headers = {
                 "Authorization": f"token {self.oauth_token}",
                 "Accept": "application/json",
-                "Editor-Plugin-Version": "copilot.lua",  # Simulate copilot.lua plugin
+                "Editor-Plugin-Version": "copilot.lua",
             }
 
             async with httpx.AsyncClient() as client:
                 response = await client.get(self.auth_url, headers=headers)
                 if response.status_code == 200:
                     self.github_token = response.json()
-                    # Save token to file for other processes
-                    async with aiofiles.open(
-                        self.config_dir / "github-copilot" / "token.json", "w"
-                    ) as f:
-                        await f.write(json.dumps(self.github_token))
+                    await self.save_token_to_file()
                     return True
 
                 raise Exception(f"Token refresh failed: {response.text}")
         finally:
-            self.lock.release()
+            # Release the lock
+            await self.release_lock()
+
+    async def watch_token_file(self):
+        """Watch token.json file for changes"""
+        token_path = self.config_dir / "github-copilot" / "token.json"
+        async for changes in awatch(str(token_path.parent)):
+            for _, path in changes:
+                if Path(path).name == "token.json":
+                    await self.load_token_from_file()
 
     async def setup(self):
         """Initialize"""
         # Get OAuth token
         self.oauth_token = await self.get_oauth_token()
 
-        # Force refresh token once
-        await self.refresh_token(force=True)
+        # Load token from file
+        await self.load_token_from_file()
+        if not self.is_token_valid():
+            # Force refresh token once
+            await self.refresh_token(force=True)
 
         # Start refresh timer
-        self.refresh_task = asyncio.create_task(self.setup_refresh_timer())
+        self.tasks.append(asyncio.create_task(self.setup_refresh_timer()))
+
+        # Start token file watcher
+        self.tasks.append(asyncio.create_task(self.watch_token_file()))
 
     async def cleanup(self):
         """Cleanup resources"""
-        if self.refresh_task:
-            self.refresh_task.cancel()
-        if self.lock.acquired:
-            self.lock.release()
+        for task in self.tasks:
+            task.cancel()
+
+        await self.release_lock()
 
     async def setup_refresh_timer(self):
         """Setup token refresh timer"""
