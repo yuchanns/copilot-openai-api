@@ -62,10 +62,24 @@ class CopilotAuth:
         """Acquire file lock for token refresh using file existence"""
         lock_path = str(self.token_file) + ".lock"
         try:
-            # Try to create lock file - if it exists, another process has the lock
+            # Add lock age check
+            if Path(lock_path).exists():
+                # If lock is older than 5 minutes, consider it stale and remove it
+                lock_age = time.time() - Path(lock_path).stat().st_mtime
+                if lock_age > 300:  # 5 minutes
+                    try:
+                        Path(lock_path).unlink()
+                    except FileNotFoundError:
+                        pass
+                else:
+                    return False
+                    
             Path(lock_path).touch(exist_ok=False)
             return True
         except FileExistsError:
+            return False
+        except Exception as e:
+            logging.error(f"Error acquiring lock: {e}")
             return False
 
     async def release_lock(self):
@@ -73,13 +87,33 @@ class CopilotAuth:
         lock_path = str(self.token_file) + ".lock"
         try:
             Path(lock_path).unlink()
+            logging.debug("Lock file released successfully")
         except FileNotFoundError:
-            pass
+            logging.debug("Lock file already removed")
+        except Exception as e:
+            logging.error(f"Error releasing lock file: {e}")
+            # Even if we fail to release the lock, don't raise the exception
+            # as it might prevent cleanup in finally blocks
 
     async def save_token_to_file(self):
         """Save token to file"""
-        async with aiofiles.open(self.token_file, "w") as f:
-            await f.write(json.dumps(self.github_token))
+        temp_file = self.token_file.with_suffix('.tmp')
+        self.is_self_writing = True  # Set writing flag to indicate file changes triggered by self
+        try:
+            async with aiofiles.open(temp_file, 'w') as f:
+                await f.write(json.dumps(self.github_token))
+            # Use atomic replace to ensure file consistency
+            temp_file.replace(self.token_file)
+            logging.info("Token successfully saved to file")
+        except Exception as e:
+            logging.error(f"Failed to save token to file: {e}")
+            if temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except Exception as e:
+                    logging.error(f"Failed to clean up temporary file: {e}")
+            self.is_self_writing = False  # Reset flag when exception occurs
+            raise
 
     async def load_token_from_file(self):
         """Load token from file"""
@@ -105,41 +139,53 @@ class CopilotAuth:
 
     async def refresh_token(self, force: bool = False) -> bool:
         """Refresh Copilot token"""
-        # Skip refresh if token is still valid and not forced
-        if not force:
-            if self.is_token_valid():
-                return True
-
-            # Load newest token from file since other process might have updated it
-            await self.load_token_from_file()
-            if self.is_token_valid():
-                return True
-
-        # Try to acquire lock for refresh
-        lock_file = await self.acquire_lock()
-        if not lock_file:
-            # Another process is refreshing, wait and check again
-            return await self.wait_for_token_refresh()
-
         try:
-            # Send authentication request
-            headers = {
-                "Authorization": f"token {self.oauth_token}",
-                "Accept": "application/json",
-                "Editor-Plugin-Version": "copilot.lua",
-            }
-
-            async with httpx.AsyncClient() as client:
-                response = await client.get(self.auth_url, headers=headers)
-                if response.status_code == 200:
-                    self.github_token = response.json()
-                    await self.save_token_to_file()
+            # Skip refresh if token is still valid and not forced
+            if not force:
+                if self.is_token_valid():
+                    logging.debug("Token still valid, skipping refresh")
                     return True
 
-                raise Exception(f"Token refresh failed: {response.text}")
-        finally:
-            # Release the lock
-            await self.release_lock()
+                # Load newest token from file since other process might have updated it
+                await self.load_token_from_file()
+                if self.is_token_valid():
+                    logging.debug("Valid token loaded from file, skipping refresh")
+                    return True
+
+            # Try to acquire lock for refresh once
+            if not await self.acquire_lock():
+                logging.info("Another process is refreshing, waiting for token update")
+                return await self.wait_for_token_refresh()
+
+            try:
+                # Send authentication request
+                headers = {
+                    "Authorization": f"token {self.oauth_token}",
+                    "Accept": "application/json",
+                    "Editor-Plugin-Version": "copilot.lua",
+                }
+
+                async with httpx.AsyncClient() as client:
+                    try:
+                        response = await client.get(self.auth_url, headers=headers)
+                        if response.status_code == 200:
+                            self.github_token = response.json()
+                            await self.save_token_to_file()
+                            logging.info("Token successfully refreshed")
+                            return True
+
+                        error_msg = f"Token refresh failed with status {response.status_code}: {response.text}"
+                        logging.error(error_msg)
+                        raise Exception(error_msg)
+                    except httpx.HTTPError as e:
+                        logging.error(f"HTTP error during token refresh: {e}")
+                        raise
+            finally:
+                # Release the lock
+                await self.release_lock()
+        except Exception as e:
+            logging.error(f"Error in refresh_token: {e}")
+            return False
 
     async def watch_token_file(self):
         """Watch token.json file for changes"""
@@ -147,6 +193,9 @@ class CopilotAuth:
         async for changes in awatch(str(token_path.parent)):
             for _, path in changes:
                 if Path(path).name == "token.json":
+                    if getattr(self, 'is_self_writing', False):
+                        self.is_self_writing = False  # If it's self-written, reset flag and skip loading
+                        continue
                     await self.load_token_from_file()
 
     async def setup(self):
