@@ -62,18 +62,6 @@ class CopilotAuth:
         """Acquire file lock for token refresh using file existence"""
         lock_path = str(self.token_file) + ".lock"
         try:
-            # Add lock age check
-            if Path(lock_path).exists():
-                # If lock is older than 5 minutes, consider it stale and remove it
-                lock_age = time.time() - Path(lock_path).stat().st_mtime
-                if lock_age > 300:  # 5 minutes
-                    try:
-                        Path(lock_path).unlink()
-                    except FileNotFoundError:
-                        pass
-                else:
-                    return False
-
             Path(lock_path).touch(exist_ok=False)
             return True
         except FileExistsError:
@@ -213,18 +201,44 @@ class CopilotAuth:
             # Force refresh token once
             await self.refresh_token(force=True)
 
-        # Start refresh timer
+        # Start refresh timer and stale lock checker
         self.tasks.append(asyncio.create_task(self.setup_refresh_timer()))
+        self.tasks.append(asyncio.create_task(self.check_stale_locks()))
 
         # Start token file watcher
         self.tasks.append(asyncio.create_task(self.watch_token_file()))
 
     async def cleanup(self):
         """Cleanup resources"""
+        # Cancel all tasks
         for task in self.tasks:
             task.cancel()
+        
+        # Wait for all tasks to complete their cancellation
+        if self.tasks:
+            await asyncio.gather(*self.tasks, return_exceptions=True)
+            self.tasks.clear()
 
         await self.release_lock()
+
+    async def check_stale_locks(self):
+        """Periodically check and clean up stale lock files"""
+        while True:
+            lock_path = str(self.token_file) + ".lock"
+            try:
+                if Path(lock_path).exists():
+                    # Check if lock is older than 5 minutes
+                    lock_age = time.time() - Path(lock_path).stat().st_mtime
+                    if lock_age > 300:  # 5 minutes
+                        try:
+                            Path(lock_path).unlink()
+                            logging.info("Removed stale lock file")
+                        except FileNotFoundError:
+                            pass
+            except Exception as e:
+                logging.error(f"Error checking stale locks: {e}")
+            
+            await asyncio.sleep(60)  # Check every minute
 
     async def setup_refresh_timer(self):
         """Setup token refresh timer"""
