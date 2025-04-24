@@ -73,7 +73,7 @@ jobs:
           tags: ghcr.io/${{ github.repository }}:${{ github.event.inputs.tag }},ghcr.io/${{ github.repository }}:latest
 
   publish-release:
-    needs: [ build ]
+    needs: [ build, create-draft-release ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
