@@ -73,7 +73,7 @@ class CopilotAuth:
                         pass
                 else:
                     return False
-                    
+
             Path(lock_path).touch(exist_ok=False)
             return True
         except FileExistsError:
@@ -97,10 +97,12 @@ class CopilotAuth:
 
     async def save_token_to_file(self):
         """Save token to file"""
-        temp_file = self.token_file.with_suffix('.tmp')
-        self.is_self_writing = True  # Set writing flag to indicate file changes triggered by self
+        temp_file = self.token_file.with_suffix(".tmp")
+        self.is_self_writing = (
+            True  # Set writing flag to indicate file changes triggered by self
+        )
         try:
-            async with aiofiles.open(temp_file, 'w') as f:
+            async with aiofiles.open(temp_file, "w") as f:
                 await f.write(json.dumps(self.github_token))
             # Use atomic replace to ensure file consistency
             temp_file.replace(self.token_file)
@@ -193,8 +195,10 @@ class CopilotAuth:
         async for changes in awatch(str(token_path.parent)):
             for _, path in changes:
                 if Path(path).name == "token.json":
-                    if getattr(self, 'is_self_writing', False):
-                        self.is_self_writing = False  # If it's self-written, reset flag and skip loading
+                    if getattr(self, "is_self_writing", False):
+                        self.is_self_writing = (
+                            False  # If it's self-written, reset flag and skip loading
+                        )
                         continue
                     await self.load_token_from_file()
 
