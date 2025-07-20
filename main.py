@@ -334,7 +334,7 @@ def verify_auth(
 
 
 @app.post("/chat/completions", dependencies=[Depends(verify_auth)])
-async def proxy(request: Request):
+async def proxy_completions(request: Request):
     target_url = "https://api.githubcopilot.com/chat/completions"
     return await proxy_stream(request, target_url)
 
