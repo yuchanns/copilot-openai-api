@@ -339,5 +339,11 @@ async def proxy_completions(request: Request):
     return await proxy_stream(request, target_url)
 
 
+@app.post("/embeddings", dependencies=[Depends(verify_auth)])
+async def proxy_embeddings(request: Request):
+    target_url = "https://api.githubcopilot.com/embeddings"
+    return await proxy_stream(request, target_url)
+
+
 # Mount self to the /v1 path
 app.mount("/v1", app)
