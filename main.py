@@ -6,16 +6,16 @@ import platform
 import time
 
 from contextlib import asynccontextmanager
-from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
 import aiofiles
 import httpx
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from watchfiles import awatch
 
 
@@ -213,7 +213,7 @@ class CopilotAuth:
         # Cancel all tasks
         for task in self.tasks:
             task.cancel()
-        
+
         # Wait for all tasks to complete their cancellation
         if self.tasks:
             await asyncio.gather(*self.tasks, return_exceptions=True)
@@ -237,7 +237,7 @@ class CopilotAuth:
                             pass
             except Exception as e:
                 logging.error(f"Error checking stale locks: {e}")
-            
+
             await asyncio.sleep(60)  # Check every minute
 
     async def setup_refresh_timer(self):
@@ -322,26 +322,22 @@ async def proxy_stream(request: Request, url: str):
         return {"error": str(e)}
 
 
-def require_auth(func):
-    @wraps(func)
-    async def wrapper(request: Request, *args, **kwargs):
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
-            raise HTTPException(
-                status_code=401, detail="Missing or invalid authorization header"
-            )
-
-        token = auth_header.split(" ")[1]
-        if token != request.app.state.access_token:
-            raise HTTPException(status_code=403, detail="Invalid access token")
-
-        return await func(request, *args, **kwargs)
-
-    return wrapper
+def verify_auth(
+    authorization: Annotated[HTTPAuthorizationCredentials, Security(HTTPBearer())],
+):
+    token = authorization.credentials
+    if token != app.state.access_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid access token",
+        )
 
 
-@app.api_route("/chat/completions", methods=["POST"])
-@require_auth
+@app.post("/chat/completions", dependencies=[Depends(verify_auth)])
 async def proxy(request: Request):
     target_url = "https://api.githubcopilot.com/chat/completions"
     return await proxy_stream(request, target_url)
+
+
+# Mount self to the /v1 path
+app.mount("/v1", app)
