@@ -7,7 +7,7 @@
 [![Image Tags](https://ghcr-badge.yuchanns.xyz/yuchanns/copilot-openai-api/tags?ignore=latest)](https://ghcr.io/yuchanns/copilot-openai-api)
 ![Image Size](https://ghcr-badge.yuchanns.xyz/yuchanns/copilot-openai-api/size)
 
-A FastAPI proxy server that seamlessly turns GitHub Copilot's chat completion capabilities into OpenAI compatible API service.
+A FastAPI proxy server that seamlessly turns GitHub Copilot's chat completion/embeddings capabilities into OpenAI compatible API service.
 
 ## ✨ Key Features
 
@@ -124,7 +124,7 @@ The Docker setup:
 
 Access the chat completion endpoint:
 ```bash
-curl -X POST http://localhost:9191/chat/completions \
+curl -X POST http://localhost:9191/v1/chat/completions \
   -H "Authorization: Bearer your_access_token_here" \
   -H "Content-Type: application/json" \
   -d '{
@@ -132,11 +132,21 @@ curl -X POST http://localhost:9191/chat/completions \
   }'
 ```
 
+Access the embeddings endpoint:
+```bash
+curl -X POST http://localhost:9191/v1/embeddings \
+  -H "Authorization: Bearer your_access_token_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "copilot-text-embedding-ada-002",
+    "input": ["The quick brown fox", "Jumped over the lazy dog"]
+  }'
+```
+
 ## 🔌 API Reference
 
-### POST /chat/completions
-
-Proxies requests to GitHub Copilot's API.
+### POST /v1/chat/completions
+Proxies requests to GitHub Copilot's Completions API.
 
 **Required Headers:**
 - `Authorization: Bearer <your_access_token>`
@@ -147,6 +157,44 @@ Proxies requests to GitHub Copilot's API.
 
 **Response:**
 - Streams responses directly from GitHub Copilot's API
+
+---
+
+### POST /v1/embeddings
+Proxies requests to Github Copilot's Embeddings API.
+
+**Required Headers:**
+- `Authorization: Bearer <your_access_token>`
+- `Content-Type: application/json`
+
+**Request Body:**
+```json
+{
+  "model": "<model_name>",
+  "input": ["string or array of strings"]
+}
+```
+- `model`: The name of the embedding model (e.g. `copilot-text-embedding-ada-002` or compatible name)
+- `input`: Accepts a string or an array of strings
+
+**Response:**
+```json
+{
+  "data": [{
+    "embedding": [...],
+    "index": 0,
+    "object": "embedding"
+  }, {
+    "embedding": [...],
+    "index": 1,
+    "object": "embedding"
+  }],
+  "usage": {
+    "prompt_tokens": 10,
+    "total_tokens": 10
+  }
+}
+```
 
 ## 🔒 Authentication
 
