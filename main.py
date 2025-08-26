@@ -12,7 +12,7 @@ from typing import Annotated, Any, Dict, Optional
 import aiofiles
 import httpx
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -287,7 +287,7 @@ app.add_middleware(
 )
 
 
-async def proxy_stream(request: Request, url: str):
+async def proxy(request: Request, url: str):
     # Get original request method, headers and body
     method = request.method
     headers = dict(request.headers)
@@ -307,14 +307,26 @@ async def proxy_stream(request: Request, url: str):
     headers["Editor-Version"] = "Neovim/0.9.0"
 
     try:
+        client = httpx.AsyncClient()
+        req = client.build_request(
+            method=method,
+            url=url,
+            headers=headers,
+            content=body,
+            timeout=30.0,
+        )
+        res = await client.send(request=req, stream=True)
+        if "text/event-stream" not in res.headers.get("Content-Type"):
+            content = (await res.aread()).strip()
+            await res.aclose()
+            await client.aclose()
+            return Response(content)
 
         async def stream_response():
-            async with httpx.AsyncClient() as client:
-                async with client.stream(
-                    method=method, url=url, headers=headers, content=body, timeout=30.0
-                ) as response:
-                    async for chunk in response.aiter_bytes():
-                        yield chunk
+            async for chunk in res.aiter_bytes():
+                yield chunk
+            await res.aclose()
+            await client.aclose()
 
         return StreamingResponse(stream_response())
 
@@ -336,13 +348,13 @@ def verify_auth(
 @app.post("/chat/completions", dependencies=[Depends(verify_auth)])
 async def proxy_completions(request: Request):
     target_url = "https://api.githubcopilot.com/chat/completions"
-    return await proxy_stream(request, target_url)
+    return await proxy(request, target_url)
 
 
 @app.post("/embeddings", dependencies=[Depends(verify_auth)])
 async def proxy_embeddings(request: Request):
     target_url = "https://api.githubcopilot.com/embeddings"
-    return await proxy_stream(request, target_url)
+    return await proxy(request, target_url)
 
 
 # Mount self to the /v1 path
