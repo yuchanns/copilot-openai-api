@@ -121,12 +121,6 @@ class CopilotAuth:
             self.github_token and self.github_token["expires_at"] > time.time() + 120
         )
 
-    async def wait_for_token_refresh(self) -> bool:
-        """Wait for another process to refresh the token"""
-        await asyncio.sleep(5)
-        await self.load_token_from_file()
-        return self.is_token_valid()
-
     async def refresh_token(self, force: bool = False) -> bool:
         """Refresh Copilot token"""
         try:
@@ -145,7 +139,8 @@ class CopilotAuth:
             # Try to acquire lock for refresh once
             if not await self.acquire_lock():
                 logging.info("Another process is refreshing, waiting for token update")
-                return await self.wait_for_token_refresh()
+                # Failed to acquire lock, wait for token to be updated by file watcher
+                return False
 
             try:
                 # Send authentication request
