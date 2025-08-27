@@ -148,6 +148,7 @@ class CopilotAuth:
             # Try to acquire lock for refresh once
             if not await self.acquire_lock():
                 logging.info("Another process is refreshing, waiting for token update")
+                await asyncio.sleep(5)
                 # Failed to acquire lock, wait for token to be updated by file watcher
                 return False
 
@@ -543,7 +544,6 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
             return
         try:
             body = json.loads(chunk)
-            logging.info(f"Parsed chunk: {body}")
             if "error" in body:
                 data = json.dumps(
                     {
