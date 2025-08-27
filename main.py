@@ -544,7 +544,6 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
             return
         try:
             body = json.loads(chunk)
-            logging.info(f"Parsed chunk: {body}")
             if "error" in body:
                 data = json.dumps(
                     {
