@@ -1024,9 +1024,12 @@ def convert_response_openai_to_anthropic(body: Dict[str, Any]) -> Dict[str, Any]
             "stop_reason": anthropicStopResponseMap.get(
                 choice.get("finish_reason", "end_turn"), "end_turn"
             ),
+            "stop_sequence": None,
             "usage": {
                 "input_tokens": usage.get("prompt_tokens", 0),
                 "output_tokens": usage.get("completion_tokens", 0),
+                "cache_read_input_tokens": usage.get("cache_read_input_tokens", 0)
+                + body["usage"].get("cache_read_input_tokens", 0),
             },
         }
     except Exception as e:
