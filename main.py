@@ -13,7 +13,15 @@ from typing import Annotated, Any, Dict, Optional
 import aiofiles
 import httpx
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, Security, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Request,
+    Response,
+    Security,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -503,13 +511,15 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
         nonlocal contentChunks
         nonlocal textContentStart
         nonlocal toolCallChunks
-        if previousChunk:
-            # may be incomplete json, prepend previous chunk
-            chunk = previousChunk + chunk
-            previousChunk = None
         if chunk.startswith("data: "):
             chunk = chunk[6:]
+        elif previousChunk:
+            # might be a continuation of previous chunk
+            chunk = previousChunk + chunk
+            previousChunk = None
+            logging.warning(f"Continuing previous chunk: {chunk}")
         if chunk == "[DONE]":
+            logging.info(f"Stream DONE, previous_chunk: {previousChunk}")
             if not stopReason:
                 stopReason = {
                     "type": "message_delta",
@@ -533,6 +543,7 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
             return
         try:
             body = json.loads(chunk)
+            logging.info(f"Parsed chunk: {body}")
             if "error" in body:
                 data = json.dumps(
                     {
@@ -958,10 +969,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                 return
 
         except Exception as e:
-            logging.error(
-                f"Failed to parse chunk: {chunk}, error: {e}"
-            )
-            previousChunk = chunk
+            logging.warning(f"Failed to parse chunk: {chunk}, error: {e}")
+            previousChunk = previousChunk + chunk if previousChunk else chunk
 
     async for chunk in body_iterator:
         if not isinstance(chunk, (bytes, memoryview)):
@@ -1061,10 +1070,10 @@ def convert_response_openai_to_anthropic(body: Dict[str, Any]) -> Dict[str, Any]
                     "code": "internal_error",
                 }
             },
-        )
+        ) from e
 
 
-@app.post("/messages")
+@app.post("/messages", dependencies=[Depends(verify_auth)])
 async def proxy_messages(request: Request):
     body = convert_request_anthropic_to_openai(await request.json())
     request._body = json.dumps(body, ensure_ascii=False).encode("utf-8")

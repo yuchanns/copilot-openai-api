@@ -26,6 +26,10 @@ A FastAPI proxy server that seamlessly turns GitHub Copilot's chat completion/em
 - Docker containerization ready
 - Flexible deployment options
 
+## 🧪 Experimental Features
+
+- Anthropic API compatibility
+
 ## 🚀 Prerequisites
 
 - Python 3.10+
@@ -157,6 +161,7 @@ Proxies requests to GitHub Copilot's Completions API.
 
 **Response:**
 - Streams responses directly from GitHub Copilot's API
+- Supports both streaming and non-streaming modes
 
 ---
 
@@ -168,32 +173,32 @@ Proxies requests to Github Copilot's Embeddings API.
 - `Content-Type: application/json`
 
 **Request Body:**
-```json
-{
-  "model": "<model_name>",
-  "input": ["string or array of strings"]
-}
-```
-- `model`: The name of the embedding model (e.g. `copilot-text-embedding-ada-002` or compatible name)
-- `input`: Accepts a string or an array of strings
+- Follow GitHub Copilot embeddings API format
 
 **Response:**
-```json
-{
-  "data": [{
-    "embedding": [...],
-    "index": 0,
-    "object": "embedding"
-  }, {
-    "embedding": [...],
-    "index": 1,
-    "object": "embedding"
-  }],
-  "usage": {
-    "prompt_tokens": 10,
-    "total_tokens": 10
-  }
-}
+- JSON response from GitHub Copilot's embeddings API
+
+---
+
+### POST /v1/messages
+Converts Anthropic API format to GitHub Copilot chat completion format.
+
+***Required Headers:*
+- `Authorization: Bearer <your_access_token>`
+- `Content-Type: application/json`
+
+**Request Body:**
+- Follow Anthropic API message format
+**Response:**
+- Follow Anthropic API response format
+
+**✨Integrate with Claude Code** (experimental):
+
+```bash
+export ANTHROPIC_BASE_URL="http://localhost:9191" # Your Copilot OpenAI API server URL
+export ANTHROPIC_AUTH_TOKEN="<your_access_token>"  # Your access token
+export ANTHROPIC_MODEL="claude-sonnet-4"
+export ANTHROPIC_SMALL_FAST_MODEL="claude-sonnet-4"
 ```
 
 ## 🔒 Authentication
