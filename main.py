@@ -470,6 +470,14 @@ def convert_request_anthropic_to_openai(body: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+anthropicStopResponseMap = {
+    "stop": "end_turn",
+    "length": "max_tokens",
+    "tool_calls": "tool_use",
+    "content_filter": "stop_sequence",
+}
+
+
 async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, charset):
     previousChunk: Optional[str] = None
     messageStart = False
@@ -702,7 +710,7 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                         "index": currentContentBlockIndex,
                         "delta": {
                             "type": "text_delta",
-                            "text": choice["delta"]["content"],
+                            "text": choice["delta"]["content"] or "",
                         },
                     }
                 )
@@ -862,7 +870,7 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                                     },
                                 }
                             )
-                        except Exception as e:
+                        except Exception:
                             import re
 
                             fixed_argument = toolCall["function"]["arguments"]
@@ -910,13 +918,9 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                         + data.encode("utf-8")
                         + b"\n\n"
                     )
-                stopReasonMap = {
-                    "stop": "end_turn",
-                    "length": "max_tokens",
-                    "tool_calls": "tool_use",
-                    "content_filter": "stop_sequence",
-                }
-                reason = stopReasonMap.get(choice["finish_reason"], "end_turn")
+                reason = anthropicStopResponseMap.get(
+                    choice["finish_reason"], "end_turn"
+                )
                 stopReason = {
                     "type": "message_delta",
                     "delta": {
@@ -934,7 +938,9 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                 return
 
         except Exception as e:
-            logging.error(f"Failed to parse chunk: {chunk}, raw_chunk: {chunk}, error: {e}")
+            logging.error(
+                f"Failed to parse chunk: {chunk}, raw_chunk: {chunk}, error: {e}"
+            )
             previousChunk = chunk
 
     async for chunk in body_iterator:
@@ -946,8 +952,94 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
         # each chunk may contains multiple lines
         for line in chunk.split("\n\n"):
             async for ch in convert_stream_response_openai_to_anthropic(line):
-                logging.info(f"Converted chunk: {ch}")
                 yield ch
+
+
+def convert_response_openai_to_anthropic(body: Dict[str, Any]) -> Dict[str, Any]:
+    choices = body.get("choices", [])
+    try:
+        if len(choices) == 0:
+            raise ValueError("No choices in the response")
+        choice = choices[0]
+        content = []
+        if "message" in choice:
+            if "annotations" in choice["message"]:
+                id = f"srvtoolu_{uuid.uuid4()}"
+                content.append(
+                    {
+                        "type": "server_tool_use",
+                        "id": id,
+                        "name": "web_search",
+                        "input": {"query": ""},
+                    }
+                )
+                content.append(
+                    {
+                        "type": "web_search_tool_result",
+                        "tool_use_id": id,
+                        "content": [
+                            {
+                                "type": "web_search_result",
+                                "url": annotation.get("url_citation", {}).get("url"),
+                                "title": annotation.get("url_citation", {}).get(
+                                    "title"
+                                ),
+                            }
+                            for annotation in choice["message"]["annotations"]
+                        ],
+                    }
+                )
+            if "content" in choice["message"]:
+                content.append({"type": "text", "text": choice["message"]["content"]})
+            if (
+                "tool_calls" in choice["message"]
+                and len(choice["message"]["tool_calls"]) > 0
+            ):
+                for tool_call in choice["message"]["tool_calls"]:
+                    input_args = tool_call.get("function", {}).get("arguments", "{}")
+                    if isinstance(input_args, dict):
+                        input_json = input_args
+                    elif isinstance(input_args, str):
+                        try:
+                            input_json = json.loads(input_args)
+                        except Exception:
+                            input_json = {"text": input_args}
+                    else:
+                        input_json = {"text": str(input_args)}
+                    content.append(
+                        {
+                            "type": "tool_use",
+                            "id": tool_call.get("id"),
+                            "name": tool_call.get("function", {}).get("name"),
+                            "input": input_json,
+                        }
+                    )
+        usage = body.get("usage", {})
+        return {
+            "id": body.get("id", ""),
+            "type": "message",
+            "role": "assistant",
+            "model": body.get("model", "unknown"),
+            "content": content,
+            "stop_reason": anthropicStopResponseMap.get(
+                choice.get("finish_reason", "end_turn"), "end_turn"
+            ),
+            "usage": {
+                "input_tokens": usage.get("prompt_tokens", 0),
+                "output_tokens": usage.get("completion_tokens", 0),
+            },
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": {
+                    "message": f"{e}",
+                    "type": "api_error",
+                    "code": "internal_error",
+                }
+            },
+        )
 
 
 @app.post("/messages")
@@ -961,8 +1053,17 @@ async def proxy_messages(request: Request):
             res.body_iterator, res.charset
         )
     elif isinstance(res, Response):
-        # TODO: convert non-streaming response
-        pass
+        body = res.body
+        if isinstance(body, memoryview):
+            body = body.tobytes()
+        headers = dict(res.headers)
+        headers.pop("content-length", None)
+        res = Response(
+            content=json.dumps(convert_response_openai_to_anthropic(json.loads(body))),
+            status_code=res.status_code,
+            headers=headers,
+            media_type=res.media_type,
+        )
     return res
 
 
