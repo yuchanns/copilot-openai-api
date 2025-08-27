@@ -386,7 +386,7 @@ def convert_request_anthropic_to_openai(body: Dict[str, Any]) -> Dict[str, Any]:
                             "role": "tool",
                             "content": tool_content
                             if isinstance(tool_content, str)
-                            else json.dumps(tool_content),
+                            else json.dumps(tool_content, ensure_ascii=False),
                             "tool_call_id": tool["tool_use_id"],
                         }
                     )
@@ -440,7 +440,9 @@ def convert_request_anthropic_to_openai(body: Dict[str, Any]) -> Dict[str, Any]:
                             "type": "function",
                             "function": {
                                 "name": tool["name"],
-                                "arguments": json.dumps(tool.get("input") or {}),
+                                "arguments": json.dumps(
+                                    tool.get("input") or {}, ensure_ascii=False
+                                ),
                             },
                         }
                         for tool in tool_call_parts
@@ -520,10 +522,10 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                         "output_tokens": 0,
                     },
                 }
-            data = json.dumps(stopReason)
+            data = json.dumps(stopReason, ensure_ascii=False)
             stopReason = None
             yield b"event: message_delta\ndata: " + data.encode("utf-8") + b"\n\n"
-            data = json.dumps({"type": "message_stop"})
+            data = json.dumps({"type": "message_stop"}, ensure_ascii=False)
             yield b"event: message_stop\ndata: " + data.encode("utf-8") + b"\n\n"
             return
 
@@ -539,7 +541,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                             "type": "api_error",
                             "message": json.dumps(body["error"]),
                         },
-                    }
+                    },
+                    ensure_ascii=False,
                 )
                 yield b"event: error\ndata: " + data.encode("utf-8") + b"\n\n"
                 return
@@ -564,7 +567,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                                 "output_tokens": 0,
                             },
                         },
-                    }
+                    },
+                    ensure_ascii=False,
                 )
                 yield b"event: message_start\ndata: " + data.encode("utf-8") + b"\n\n"
             if "usage" in body:
@@ -604,7 +608,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                         {
                             "type": "content_block_stop",
                             "index": currentContentBlockIndex,
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     currentContentBlockIndex = -1
                     yield (
@@ -620,7 +625,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                             "type": "content_block_delta",
                             "index": contentIndex,
                             "content_block": {"type": "thinking", "thinking": ""},
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     yield (
                         b"event: content_block_start\ndata: "
@@ -636,7 +642,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                                 "type": "signature_delta",
                                 "signature": choice["delta"]["thinking"]["signature"],
                             },
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     yield (
                         b"event: content_block_delta\ndata: "
@@ -644,7 +651,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                         + b"\n\n"
                     )
                     data = json.dumps(
-                        {"type": "content_block_stop", "index": contentIndex}
+                        {"type": "content_block_stop", "index": contentIndex},
+                        ensure_ascii=False,
                     )
                     yield (
                         b"event: content_block_delta\ndata: "
@@ -663,7 +671,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                                 "type": "thinking_delta",
                                 "thinking": thinking_text,
                             },
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     yield (
                         b"event: content_block_delta\ndata: "
@@ -681,7 +690,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                             {
                                 "type": "content_block_stop",
                                 "index": currentContentBlockIndex,
-                            }
+                            },
+                            ensure_ascii=False,
                         )
                         currentContentBlockIndex = -1
                         yield (
@@ -696,7 +706,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                             "type": "content_block_start",
                             "index": contentIndex,
                             "content_block": {"type": "text", "text": ""},
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     yield (
                         b"event: content_block_start\ndata: "
@@ -712,7 +723,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                             "type": "text_delta",
                             "text": choice["delta"]["content"] or "",
                         },
-                    }
+                    },
+                    ensure_ascii=False,
                 )
                 yield (
                     b"event: content_block_delta\ndata: "
@@ -730,7 +742,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                         {
                             "type": "content_block_stop",
                             "index": currentContentBlockIndex,
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     currentContentBlockIndex = -1
                     yield (
@@ -759,7 +772,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                                     ),
                                 },
                             },
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     yield (
                         b"event: content_block_start\ndata: "
@@ -770,7 +784,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                         {
                             "type": "content_block_stop",
                             "index": contentIndex,
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     yield (
                         b"event: content_block_stop\ndata: "
@@ -794,7 +809,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                                 {
                                     "type": "content_block_stop",
                                     "index": currentContentBlockIndex,
-                                }
+                                },
+                                ensure_ascii=False,
                             )
                             currentContentBlockIndex = -1
                             yield (
@@ -821,7 +837,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                                     "name": toolCallName,
                                     "input": {},
                                 },
-                            }
+                            },
+                            ensure_ascii=False,
                         )
                         yield (
                             b"event: content_block_start\ndata: "
@@ -868,7 +885,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                                             "arguments"
                                         ],
                                     },
-                                }
+                                },
+                                ensure_ascii=False,
                             )
                         except Exception:
                             import re
@@ -888,7 +906,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                                             "type": "input_json_delta",
                                             "partial_json": fixed_argument,
                                         },
-                                    }
+                                    },
+                                    ensure_ascii=False,
                                 )
                             except Exception as e:
                                 logging.error(
@@ -910,7 +929,8 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
                         {
                             "type": "content_block_stop",
                             "index": currentContentBlockIndex,
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     currentContentBlockIndex = -1
                     yield (
@@ -939,7 +959,7 @@ async def iterator_convert_stream_response_openai_to_anthropic(body_iterator, ch
 
         except Exception as e:
             logging.error(
-                f"Failed to parse chunk: {chunk}, raw_chunk: {chunk}, error: {e}"
+                f"Failed to parse chunk: {chunk}, error: {e}"
             )
             previousChunk = chunk
 
@@ -997,6 +1017,7 @@ def convert_response_openai_to_anthropic(body: Dict[str, Any]) -> Dict[str, Any]
             ):
                 for tool_call in choice["message"]["tool_calls"]:
                     input_args = tool_call.get("function", {}).get("arguments", "{}")
+                    input_json = {}
                     if isinstance(input_args, dict):
                         input_json = input_args
                     elif isinstance(input_args, str):
@@ -1004,8 +1025,6 @@ def convert_response_openai_to_anthropic(body: Dict[str, Any]) -> Dict[str, Any]
                             input_json = json.loads(input_args)
                         except Exception:
                             input_json = {"text": input_args}
-                    else:
-                        input_json = {"text": str(input_args)}
                     content.append(
                         {
                             "type": "tool_use",
@@ -1048,7 +1067,7 @@ def convert_response_openai_to_anthropic(body: Dict[str, Any]) -> Dict[str, Any]
 @app.post("/messages")
 async def proxy_messages(request: Request):
     body = convert_request_anthropic_to_openai(await request.json())
-    request._body = json.dumps(body).encode("utf-8")
+    request._body = json.dumps(body, ensure_ascii=False).encode("utf-8")
     target_url = "https://api.githubcopilot.com/chat/completions"
     res = await proxy(request, target_url)
     if isinstance(res, StreamingResponse):
@@ -1062,7 +1081,10 @@ async def proxy_messages(request: Request):
         headers = dict(res.headers)
         headers.pop("content-length", None)
         res = Response(
-            content=json.dumps(convert_response_openai_to_anthropic(json.loads(body))),
+            content=json.dumps(
+                convert_response_openai_to_anthropic(json.loads(body)),
+                ensure_ascii=False,
+            ),
             status_code=res.status_code,
             headers=headers,
             media_type=res.media_type,
