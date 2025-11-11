@@ -26,10 +26,6 @@ A FastAPI proxy server that seamlessly turns GitHub Copilot's chat completion/em
 - Docker containerization ready
 - Flexible deployment options
 
-## 🧪 Experimental Features
-
-- Anthropic API compatibility
-
 ## 🚀 Prerequisites
 
 - Python 3.10+
@@ -177,29 +173,6 @@ Proxies requests to Github Copilot's Embeddings API.
 
 **Response:**
 - JSON response from GitHub Copilot's embeddings API
-
----
-
-### POST /v1/messages
-Converts Anthropic API format to GitHub Copilot chat completion format.
-
-***Required Headers:*
-- `Authorization: Bearer <your_access_token>`
-- `Content-Type: application/json`
-
-**Request Body:**
-- Follow Anthropic API message format
-**Response:**
-- Follow Anthropic API response format
-
-**✨Integrate with Claude Code** (experimental):
-
-```bash
-export ANTHROPIC_BASE_URL="http://localhost:9191" # Your Copilot OpenAI API server URL
-export ANTHROPIC_AUTH_TOKEN="<your_access_token>"  # Your access token
-export ANTHROPIC_MODEL="claude-sonnet-4"
-export ANTHROPIC_SMALL_FAST_MODEL="claude-sonnet-4"
-```
 
 ## 🔒 Authentication
 
