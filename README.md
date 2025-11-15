@@ -145,6 +145,24 @@ curl -X POST http://localhost:9191/v1/embeddings \
 
 ## 🔌 API Reference
 
+### GET /v1/models
+Lists available models that can be used with the API.
+
+**Required Headers:**
+- `Authorization: Bearer <your_access_token>`
+
+**Response:**
+- JSON response containing a list of available models
+- Compatible with OpenAI API format
+
+**Example:**
+```bash
+curl http://localhost:9191/v1/models \
+  -H "Authorization: Bearer your_access_token_here"
+```
+
+---
+
 ### POST /v1/chat/completions
 Proxies requests to GitHub Copilot's Completions API.
 

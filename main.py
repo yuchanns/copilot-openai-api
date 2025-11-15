@@ -4,7 +4,6 @@ import logging
 import os
 import platform
 import time
-import uuid
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -361,6 +360,40 @@ async def proxy_completions(request: Request):
 async def proxy_embeddings(request: Request):
     target_url = "https://api.githubcopilot.com/embeddings"
     return await proxy(request, target_url)
+
+
+@app.get("/models", dependencies=[Depends(verify_auth)])
+async def list_models():
+    """List available models endpoint compatible with OpenAI API"""
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": "gpt-4",
+                "object": "model",
+                "created": 1686935002,
+                "owned_by": "github-copilot",
+            },
+            {
+                "id": "gpt-4o",
+                "object": "model",
+                "created": 1715367049,
+                "owned_by": "github-copilot",
+            },
+            {
+                "id": "gpt-3.5-turbo",
+                "object": "model",
+                "created": 1677610602,
+                "owned_by": "github-copilot",
+            },
+            {
+                "id": "copilot-text-embedding-ada-002",
+                "object": "model",
+                "created": 1671217299,
+                "owned_by": "github-copilot",
+            },
+        ],
+    }
 
 
 # Mount self to the /v1 path
