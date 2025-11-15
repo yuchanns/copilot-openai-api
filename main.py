@@ -370,7 +370,36 @@ async def list_models(request: Request):
         api_endpoint = auth.github_token["endpoints"].get("api", "")
         if api_endpoint:
             target_url = f"{api_endpoint}/models"
-            return await proxy(request, target_url)
+
+            # Get the raw response from GitHub Copilot API
+            headers = {
+                "Authorization": f"Bearer {auth.github_token['token']}",
+                "Copilot-Integration-Id": "vscode-chat",
+                "Editor-Version": "Neovim/0.9.0",
+            }
+
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(target_url, headers=headers, timeout=30.0)
+                    if response.status_code == 200:
+                        copilot_data = response.json()
+
+                        # Transform to OpenAI format
+                        openai_models = []
+                        for model in copilot_data.get("data", []):
+                            openai_models.append({
+                                "id": model.get("id"),
+                                "object": "model",
+                                "created": 1686935002,  # Fixed timestamp
+                                "owned_by": model.get("vendor", "github-copilot"),
+                            })
+
+                        return {
+                            "object": "list",
+                            "data": openai_models,
+                        }
+            except Exception as e:
+                logging.error(f"Error fetching models: {e}")
 
     # Fallback to empty list if endpoints not available
     return {"object": "list", "data": []}
