@@ -145,6 +145,44 @@ curl -X POST http://localhost:9191/v1/embeddings \
 
 ## 🔌 API Reference
 
+### GET /v1/models
+Proxies requests to GitHub Copilot's Models API to list available models.
+
+**Required Headers:**
+- `Authorization: Bearer <your_access_token>`
+
+**Response:**
+- JSON response containing a list of available models from GitHub Copilot
+- Compatible with OpenAI API format
+
+**Example:**
+```bash
+curl http://localhost:9191/v1/models \
+  -H "Authorization: Bearer your_access_token_here"
+```
+
+---
+
+### GET /v1/models/{model}
+Get details for a specific model.
+
+**Required Headers:**
+- `Authorization: Bearer <your_access_token>`
+
+**Path Parameters:**
+- `model`: Model ID (e.g., `gpt-5.1`, `claude-sonnet-4`)
+
+**Response:**
+- JSON response with model details in OpenAI format
+
+**Example:**
+```bash
+curl http://localhost:9191/v1/models/gpt-5.1 \
+  -H "Authorization: Bearer your_access_token_here"
+```
+
+---
+
 ### POST /v1/chat/completions
 Proxies requests to GitHub Copilot's Completions API.
 

@@ -1,14 +1,14 @@
 import asyncio
+import datetime
 import json
 import logging
 import os
 import platform
 import time
-import uuid
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional, cast
 
 import aiofiles
 import httpx
@@ -361,6 +361,60 @@ async def proxy_completions(request: Request):
 async def proxy_embeddings(request: Request):
     target_url = "https://api.githubcopilot.com/embeddings"
     return await proxy(request, target_url)
+
+
+@app.get("/models", dependencies=[Depends(verify_auth)])
+async def list_models(request: Request):
+    """List available models endpoint compatible with OpenAI API"""
+    target_url = "https://api.githubcopilot.com/models"
+
+    # Get the raw response from GitHub Copilot API using proxy
+    response = await proxy(request, target_url)
+    response = cast(Response, response)
+    body = response.body
+    if isinstance(body, memoryview):
+        body = body.tobytes()
+    copilot_data = json.loads(body.decode())
+    # Transform to OpenAI format
+    openai_models = []
+    for model in copilot_data.get("data", []):
+        openai_models.append(
+            {
+                "id": model.get("id"),
+                "object": "model",
+                "created": int(datetime.datetime.now().timestamp()),
+                "owned_by": model.get("vendor", "github-copilot"),
+            }
+        )
+
+    return {
+        "object": "list",
+        "data": openai_models,
+    }
+
+
+@app.get("/models/{model}", dependencies=[Depends(verify_auth)])
+async def get_model(model: str, request: Request):
+    """Get details for a specific model in OpenAI API format"""
+    target_url = "https://api.githubcopilot.com/models"
+
+    # Get the raw response from GitHub Copilot API using proxy
+    response = await proxy(request, target_url)
+    response = cast(Response, response)
+    body = response.body
+    if isinstance(body, memoryview):
+        body = body.tobytes()
+    copilot_data = json.loads(body.decode())
+
+    # Find the specific model
+    for copilot_model in copilot_data.get("data", []):
+        if copilot_model.get("id") == model:
+            return {
+                "id": copilot_model.get("id"),
+                "object": "model",
+                "created": int(datetime.datetime.now().timestamp()),
+                "owned_by": copilot_model.get("vendor", "github-copilot"),
+            }
 
 
 # Mount self to the /v1 path
