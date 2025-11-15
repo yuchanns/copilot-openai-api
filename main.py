@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import logging
 import os
@@ -7,7 +8,7 @@ import time
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional, cast
 
 import aiofiles
 import httpx
@@ -365,87 +366,55 @@ async def proxy_embeddings(request: Request):
 @app.get("/models", dependencies=[Depends(verify_auth)])
 async def list_models(request: Request):
     """List available models endpoint compatible with OpenAI API"""
-    auth = app.state.auth
-    if auth.github_token and "endpoints" in auth.github_token:
-        api_endpoint = auth.github_token["endpoints"].get("api", "")
-        if api_endpoint:
-            target_url = f"{api_endpoint}/models"
+    target_url = "https://api.githubcopilot.com/models"
 
-            # Get the raw response from GitHub Copilot API using proxy
-            response = await proxy(request, target_url)
+    # Get the raw response from GitHub Copilot API using proxy
+    response = await proxy(request, target_url)
+    response = cast(Response, response)
+    body = response.body
+    if isinstance(body, memoryview):
+        body = body.tobytes()
+    copilot_data = json.loads(body.decode())
+    # Transform to OpenAI format
+    openai_models = []
+    for model in copilot_data.get("data", []):
+        openai_models.append(
+            {
+                "id": model.get("id"),
+                "object": "model",
+                "created": int(datetime.datetime.now().timestamp()),
+                "owned_by": model.get("vendor", "github-copilot"),
+            }
+        )
 
-            # Parse the response if it's a Response object
-            if isinstance(response, Response):
-                try:
-                    copilot_data = json.loads(response.body.decode())
-
-                    # Transform to OpenAI format
-                    openai_models = []
-                    for model in copilot_data.get("data", []):
-                        openai_models.append({
-                            "id": model.get("id"),
-                            "object": "model",
-                            "created": 1686935002,  # Fixed timestamp
-                            "owned_by": model.get("vendor", "github-copilot"),
-                        })
-
-                    return {
-                        "object": "list",
-                        "data": openai_models,
-                    }
-                except Exception as e:
-                    logging.error(f"Error parsing models response: {e}")
-
-    # Fallback to empty list if endpoints not available
-    return {"object": "list", "data": []}
+    return {
+        "object": "list",
+        "data": openai_models,
+    }
 
 
 @app.get("/models/{model}", dependencies=[Depends(verify_auth)])
 async def get_model(model: str, request: Request):
     """Get details for a specific model in OpenAI API format"""
-    auth = app.state.auth
-    if auth.github_token and "endpoints" in auth.github_token:
-        api_endpoint = auth.github_token["endpoints"].get("api", "")
-        if api_endpoint:
-            target_url = f"{api_endpoint}/models"
+    target_url = "https://api.githubcopilot.com/models"
 
-            # Get the raw response from GitHub Copilot API using proxy
-            response = await proxy(request, target_url)
+    # Get the raw response from GitHub Copilot API using proxy
+    response = await proxy(request, target_url)
+    response = cast(Response, response)
+    body = response.body
+    if isinstance(body, memoryview):
+        body = body.tobytes()
+    copilot_data = json.loads(body.decode())
 
-            # Parse the response if it's a Response object
-            if isinstance(response, Response):
-                try:
-                    copilot_data = json.loads(response.body.decode())
-
-                    # Find the specific model
-                    for copilot_model in copilot_data.get("data", []):
-                        if copilot_model.get("id") == model:
-                            return {
-                                "id": copilot_model.get("id"),
-                                "object": "model",
-                                "created": 1686935002,  # Fixed timestamp
-                                "owned_by": copilot_model.get("vendor", "github-copilot"),
-                            }
-
-                    # Model not found
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Model '{model}' not found",
-                    )
-                except HTTPException:
-                    raise
-                except Exception as e:
-                    logging.error(f"Error parsing model response: {e}")
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Error fetching model details",
-                    ) from None
-
-    # Fallback if endpoints not available
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Service unavailable",
-    )
+    # Find the specific model
+    for copilot_model in copilot_data.get("data", []):
+        if copilot_model.get("id") == model:
+            return {
+                "id": copilot_model.get("id"),
+                "object": "model",
+                "created": int(datetime.datetime.now().timestamp()),
+                "owned_by": copilot_model.get("vendor", "github-copilot"),
+            }
 
 
 # Mount self to the /v1 path
