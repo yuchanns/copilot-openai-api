@@ -363,37 +363,17 @@ async def proxy_embeddings(request: Request):
 
 
 @app.get("/models", dependencies=[Depends(verify_auth)])
-async def list_models():
+async def list_models(request: Request):
     """List available models endpoint compatible with OpenAI API"""
-    return {
-        "object": "list",
-        "data": [
-            {
-                "id": "gpt-4",
-                "object": "model",
-                "created": 1686935002,
-                "owned_by": "github-copilot",
-            },
-            {
-                "id": "gpt-4o",
-                "object": "model",
-                "created": 1715367049,
-                "owned_by": "github-copilot",
-            },
-            {
-                "id": "gpt-3.5-turbo",
-                "object": "model",
-                "created": 1677610602,
-                "owned_by": "github-copilot",
-            },
-            {
-                "id": "copilot-text-embedding-ada-002",
-                "object": "model",
-                "created": 1671217299,
-                "owned_by": "github-copilot",
-            },
-        ],
-    }
+    auth = app.state.auth
+    if auth.github_token and "endpoints" in auth.github_token:
+        api_endpoint = auth.github_token["endpoints"].get("api", "")
+        if api_endpoint:
+            target_url = f"{api_endpoint}/models"
+            return await proxy(request, target_url)
+
+    # Fallback to empty list if endpoints not available
+    return {"object": "list", "data": []}
 
 
 # Mount self to the /v1 path

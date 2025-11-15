@@ -146,13 +146,13 @@ curl -X POST http://localhost:9191/v1/embeddings \
 ## 🔌 API Reference
 
 ### GET /v1/models
-Lists available models that can be used with the API.
+Proxies requests to GitHub Copilot's Models API to list available models.
 
 **Required Headers:**
 - `Authorization: Bearer <your_access_token>`
 
 **Response:**
-- JSON response containing a list of available models
+- JSON response containing a list of available models from GitHub Copilot
 - Compatible with OpenAI API format
 
 **Example:**
