@@ -322,11 +322,16 @@ async def proxy(request: Request, url: str):
             timeout=30.0,
         )
         res = await client.send(request=req, stream=True)
+
+        if not res.is_success:
+            return Response(res.content, status_code=res.status_code, headers=res.headers)
+
         if "text/event-stream" not in res.headers.get("Content-Type"):
             content = (await res.aread()).strip()
+            headers = dict(res.headers)
             await res.aclose()
             await client.aclose()
-            return Response(content)
+            return Response(content, status_code=res.status_code, headers=headers)
 
         async def stream_response():
             async for chunk in res.aiter_bytes():
@@ -334,7 +339,8 @@ async def proxy(request: Request, url: str):
             await res.aclose()
             await client.aclose()
 
-        return StreamingResponse(stream_response())
+        return StreamingResponse(stream_response(), status_code=res.status_code,
+                                 headers=res.headers)
 
     except Exception as e:
         return {"error": str(e)}
