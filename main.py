@@ -323,13 +323,15 @@ async def proxy(request: Request, url: str):
         )
         res = await client.send(request=req, stream=True)
 
+        headers = {
+            "Content-Type": res.headers.get("Content-Type", "application/json"),
+        }
+
         if not res.is_success:
-            return Response(res.content, status_code=res.status_code, headers=res.headers)
+            return Response(res.content, status_code=res.status_code, headers=headers)
 
         if "text/event-stream" not in res.headers.get("Content-Type"):
             content = (await res.aread()).strip()
-            headers = dict(res.headers)
-            del headers["Content-Length"]
             await res.aclose()
             await client.aclose()
             return Response(content, status_code=res.status_code, headers=headers)
@@ -340,8 +342,6 @@ async def proxy(request: Request, url: str):
             await res.aclose()
             await client.aclose()
 
-        headers = dict(res.headers)
-        del headers["Content-Length"]
         return StreamingResponse(stream_response(), status_code=res.status_code,
                                  headers=headers)
 
