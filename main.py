@@ -319,6 +319,7 @@ async def proxy(request: Request, url: str):
             url=url,
             headers=headers,
             content=body,
+            timeout=300,
         )
         res = await client.send(request=req, stream=True)
 
