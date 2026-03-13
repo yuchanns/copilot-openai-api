@@ -313,7 +313,7 @@ async def proxy(request: Request, url: str):
     headers["Editor-Version"] = "Neovim/0.9.0"
 
     try:
-        client = httpx.AsyncClient(timeout=30.0)
+        client = httpx.AsyncClient()
         req = client.build_request(
             method=method,
             url=url,
