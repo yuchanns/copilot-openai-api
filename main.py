@@ -313,22 +313,18 @@ async def proxy(request: Request, url: str):
     headers["Editor-Version"] = "Neovim/0.9.0"
 
     try:
-        client = httpx.AsyncClient()
+        client = httpx.AsyncClient(timeout=30.0)
         req = client.build_request(
             method=method,
             url=url,
             headers=headers,
             content=body,
-            timeout=30.0,
         )
         res = await client.send(request=req, stream=True)
 
         headers = {
             "Content-Type": res.headers.get("Content-Type", "application/json"),
         }
-
-        if not res.is_success:
-            return Response(res.content, status_code=res.status_code, headers=headers)
 
         if "text/event-stream" not in res.headers.get("Content-Type"):
             content = (await res.aread()).strip()
@@ -345,8 +341,18 @@ async def proxy(request: Request, url: str):
         return StreamingResponse(stream_response(), status_code=res.status_code,
                                  headers=headers)
 
-    except Exception as e:
-        return {"error": str(e)}
+    except httpx.TimeoutException as e:
+        logging.exception("Upstream request timed out")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=str(e),
+        ) from e
+    except httpx.RequestError as e:
+        logging.exception("Upstream request failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(e),
+        ) from e
 
 
 def verify_auth(
