@@ -339,8 +339,9 @@ async def proxy(request: Request, url: str):
             await res.aclose()
             await client.aclose()
 
-        return StreamingResponse(stream_response(), status_code=res.status_code,
-                                 headers=headers)
+        return StreamingResponse(
+            stream_response(), status_code=res.status_code, headers=headers
+        )
 
     except httpx.TimeoutException as e:
         logging.exception("Upstream request timed out")
@@ -365,6 +366,12 @@ def verify_auth(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid access token",
         )
+
+
+@app.post("/responses", dependencies=[Depends(verify_auth)])
+async def proxy_responses(request: Request):
+    target_url = "https://api.githubcopilot.com/responses"
+    return await proxy(request, target_url)
 
 
 @app.post("/chat/completions", dependencies=[Depends(verify_auth)])
