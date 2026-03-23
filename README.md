@@ -7,7 +7,7 @@
 [![Image Tags](https://ghcr-badge.yuchanns.xyz/yuchanns/copilot-openai-api/tags?ignore=latest)](https://ghcr.io/yuchanns/copilot-openai-api)
 ![Image Size](https://ghcr-badge.yuchanns.xyz/yuchanns/copilot-openai-api/size)
 
-A FastAPI proxy server that seamlessly turns GitHub Copilot's chat completion/embeddings capabilities into OpenAI compatible API service.
+A FastAPI proxy server that seamlessly turns GitHub Copilot's chat completion/embeddings/responses capabilities into OpenAI compatible API service.
 
 ## ✨ Key Features
 
@@ -143,6 +143,17 @@ curl -X POST http://localhost:9191/v1/embeddings \
   }'
 ```
 
+Access the responses endpoint:
+```bash
+curl http://localhost:9191/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_access_token_here" \
+  -d '{
+    "model": "gpt-5.4-mini",
+    "input": "Tell me a three sentence bedtime story about a unicorn."
+  }'
+```
+
 ## 🔌 API Reference
 
 ### GET /v1/models
@@ -211,6 +222,20 @@ Proxies requests to Github Copilot's Embeddings API.
 
 **Response:**
 - JSON response from GitHub Copilot's embeddings API
+
+### POST /v1/responses
+Proxies requests to Github Copilot's Responses API.
+
+**Required Headers:**
+- `Authorization: Bearer <your_access_token>`
+- `Content-Type: application/json`
+
+**Request Body:**
+- Follow GitHub Copilot responses API format
+
+**Response:**
+- Streams responses directly from GitHub Copilot's API
+- Supports both streaming and non-streaming modes
 
 ## 🔒 Authentication
 
