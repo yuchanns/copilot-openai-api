@@ -1,3 +1,5 @@
+
+
 # 🤖 Copilot OpenAI API
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -38,7 +40,7 @@ A FastAPI proxy server that seamlessly turns GitHub Copilot's chat completion/em
 1. Clone the repository:
 ```bash
 git clone https://github.com/yuchanns/copilot-openai-api.git
-cd copilot_provider
+cd copilot-openai-api
 ```
 
 2. Install dependencies:
